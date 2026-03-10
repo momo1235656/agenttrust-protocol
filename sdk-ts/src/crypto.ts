@@ -7,7 +7,7 @@ import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha512';
 
 // @noble/ed25519 v2 requires setting sha512 implementation
-ed.etc.sha512Sync = (...m) => sha512(...m);
+ed.etc.sha512Sync = (msg: Uint8Array) => sha512(msg);
 
 /** Ed25519鍵ペアを生成する */
 export async function generateKeypair(): Promise<{
@@ -40,11 +40,8 @@ export async function verifySignature(
   }
 }
 
-/** Uint8Array → Base64文字列 */
+/** Uint8Array → Base64文字列（Node 18+/Deno/Bun/Browser対応） */
 export function toBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64');
-  }
   let binary = '';
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
@@ -52,11 +49,8 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Base64文字列 → Uint8Array */
+/** Base64文字列 → Uint8Array（Node 18+/Deno/Bun/Browser対応） */
 export function fromBase64(base64: string): Uint8Array {
-  if (typeof Buffer !== 'undefined') {
-    return new Uint8Array(Buffer.from(base64, 'base64'));
-  }
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
