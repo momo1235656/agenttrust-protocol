@@ -35,5 +35,9 @@ data/dids/
 .coverage
 htmlcov/
 
+# Node.js
+node_modules/
+sdk-ts/node_modules/
+
 # Claude Code
 .claude/
