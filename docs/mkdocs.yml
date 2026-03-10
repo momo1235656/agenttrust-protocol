@@ -1,0 +1,46 @@
+site_name: AgentTrust Protocol
+site_description: AI Agent Payment Infrastructure — DID + JWT + Hash Chain
+site_url: https://momo1235656.github.io/agenttrust-protocol
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: teal
+    accent: deep orange
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+    - content.code.annotate
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - API Reference: api-reference.md
+  - SDKs:
+    - Python: sdk-python.md
+    - TypeScript: sdk-typescript.md
+  - Integrations:
+    - LangChain: integrations/langchain.md
+    - AutoGen: integrations/autogen.md
+    - OpenClaw: integrations/openclaw.md
+    - MCP: integrations/mcp.md
+  - Concepts:
+    - "DID (Agent Identity)": concepts/did.md
+    - "Tokens & Scopes": concepts/tokens.md
+    - Audit Trail: concepts/audit.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+
+plugins:
+  - search
