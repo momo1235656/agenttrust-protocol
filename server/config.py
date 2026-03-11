@@ -24,8 +24,11 @@ class Settings:
             priv_b64 = os.getenv("JWT_SERVER_PRIVATE_KEY", "").strip()
             pub_b64 = os.getenv("JWT_SERVER_PUBLIC_KEY", "").strip()
             if priv_b64 and pub_b64:
-                self._server_private_key = base64.b64decode(priv_b64)
-                self._server_public_key = base64.b64decode(pub_b64)
+                try:
+                    self._server_private_key = base64.b64decode(priv_b64)
+                    self._server_public_key = base64.b64decode(pub_b64)
+                except Exception:
+                    pass  # Fall through to auto-generate below
             else:
                 # Generate new keypair
                 sk = SigningKey.generate()
