@@ -1,4 +1,5 @@
 # AgentTrust Protocol
+<img width="1353" height="399" alt="スクリーンショット 2026-03-12 3 03 03" src="https://github.com/user-attachments/assets/88a06134-2a3b-4ea0-8b14-e469a0d67ef8" />
 
 **Secure Payment Infrastructure for AI Agents**
 **AIエージェントのための安全な決済インフラ**
