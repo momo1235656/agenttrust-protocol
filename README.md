@@ -214,7 +214,7 @@ agenttrust-protocol/
 ### Option A: Rust Server (Phase 2) — Recommended
 
 #### Prerequisites
-- Rust 1.77+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
+- Rust 1.88+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - Docker & Docker Compose（PostgreSQL + Redis 用）
 - Stripe アカウント（テストモードの API キー）
 
@@ -228,6 +228,7 @@ cp ../server-rust/.env.example .env
 # .env を編集: STRIPE_SECRET_KEY を設定
 
 # 全スタック起動（PostgreSQL + Redis + Rustサーバー）
+# ※ 初回ビルドは依存クレート(364パッケージ)のコンパイルのため10〜20分かかります
 docker-compose up
 
 # または Rust サーバーをローカルで起動
