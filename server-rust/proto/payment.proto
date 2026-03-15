@@ -1,0 +1,68 @@
+syntax = "proto3";
+package agenttrust.payment;
+
+service AgentPaymentService {
+    rpc InitiateTransfer(TransferRequest) returns (TransferResponse);
+    rpc CompleteService(CompleteRequest) returns (CompleteResponse);
+    rpc WatchTransfer(WatchRequest) returns (stream TransferStatusUpdate);
+    rpc DisputeEscrow(DisputeRequest) returns (DisputeResponse);
+}
+
+message TransferRequest {
+    string sender_did = 1;
+    string receiver_did = 2;
+    int64 amount = 3;
+    string currency = 4;
+    string description = 5;
+    string service_type = 6;
+    int32 timeout_minutes = 7;
+    bytes sender_signature = 8;
+    bytes message = 9;
+}
+
+message TransferResponse {
+    string transfer_id = 1;
+    string saga_id = 2;
+    string status = 3;
+    string timeout_at = 4;
+}
+
+message WatchRequest {
+    string transfer_id = 1;
+}
+
+message TransferStatusUpdate {
+    string transfer_id = 1;
+    string status = 2;
+    int32 current_step = 3;
+    int32 total_steps = 4;
+    string step_name = 5;
+    string step_status = 6;
+    string timestamp = 7;
+}
+
+message CompleteRequest {
+    string saga_id = 1;
+    string reporter_did = 2;
+    bytes reporter_signature = 3;
+    bytes message = 4;
+    string result_hash = 5;
+    string result_summary = 6;
+}
+
+message CompleteResponse {
+    bool accepted = 1;
+    string status = 2;
+}
+
+message DisputeRequest {
+    string escrow_id = 1;
+    string disputed_by = 2;
+    string reason = 3;
+    string evidence_hash = 4;
+}
+
+message DisputeResponse {
+    string dispute_id = 1;
+    string status = 2;
+}

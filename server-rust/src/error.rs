@@ -73,6 +73,15 @@ pub enum AppError {
 
     #[error("Bad request: {0}")]
     BadRequest(String),
+
+    #[error("Saga compensation failed: {0}")]
+    SagaCompensationFailed(String),
+
+    #[error("Flow control violation: {0}")]
+    FlowViolation(String),
+
+    #[error("Escrow error: {0}")]
+    EscrowError(String),
 }
 
 impl From<anyhow::Error> for AppError {
@@ -106,6 +115,9 @@ impl IntoResponse for AppError {
             AppError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             AppError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
+            AppError::SagaCompensationFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, "SAGA_COMPENSATION_FAILED"),
+            AppError::FlowViolation(_) => (StatusCode::TOO_MANY_REQUESTS, "FLOW_VIOLATION"),
+            AppError::EscrowError(_) => (StatusCode::BAD_REQUEST, "ESCROW_ERROR"),
         };
 
         let details = match &self {

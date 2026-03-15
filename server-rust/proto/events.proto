@@ -1,0 +1,17 @@
+syntax = "proto3";
+package agenttrust.events;
+
+message AgentTrustEvent {
+    string event_id = 1;
+    string event_type = 2;
+    string timestamp = 3;
+    string aggregate_id = 4;
+    bytes payload = 5;
+    EventMetadata metadata = 6;
+}
+
+message EventMetadata {
+    string source = 1;
+    string correlation_id = 2;
+    string causation_id = 3;
+}

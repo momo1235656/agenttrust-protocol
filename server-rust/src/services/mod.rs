@@ -1,10 +1,15 @@
+pub mod a2a_service;
 pub mod approval_service;
 pub mod audit_service;
 pub mod auth_service;
 pub mod did_service;
+pub mod escrow_service;
+pub mod flow_service;
 pub mod fraud_service;
+pub mod kafka_service;
 pub mod oauth_service;
 pub mod payment_service;
 pub mod rate_limiter;
+pub mod saga_service;
 pub mod trust_service;
 pub mod vc_service;

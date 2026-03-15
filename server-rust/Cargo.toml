@@ -67,6 +67,23 @@ hex = "0.4"
 # URL encoding/decoding
 urlencoding = "2"
 
+# Kafka
+rdkafka = { version = "0.36", features = ["cmake-build", "ssl-vendored"] }
+
+# gRPC
+tonic = { version = "0.11", features = ["transport"] }
+prost = "0.12"
+prost-types = "0.12"
+
+# Streaming for gRPC
+tokio-stream = { version = "0.1", features = ["net"] }
+
+# Scheduler (using tokio::time::interval directly)
+tokio-cron-scheduler = "0.10"
+
+[build-dependencies]
+tonic-build = "0.11"
+
 [dev-dependencies]
 tokio-test = "0.4"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
