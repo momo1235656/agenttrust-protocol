@@ -274,32 +274,40 @@ agenttrust-protocol/
 
 ## Environment Variables / 環境変数
 
-サーバー起動前に `server-rust/.env`（または `docker/.env`）を作成し、以下の変数を設定してください。
+サーバー起動前に `server-rust/.env.example` を `.env` にコピーし、以下の変数を設定してください。
 
-| Variable / 変数名              | Required | Default       | Description / 説明                                                      |
-| ------------------------------ | -------- | ------------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`                 | ✅       | —             | PostgreSQL 接続 URL (e.g. `postgres://user:pass@localhost/agenttrust`)  |
-| `REDIS_URL`                    | ✅       | —             | Redis 接続 URL (e.g. `redis://localhost:6379`)                          |
-| `JWT_SERVER_PRIVATE_KEY`       | ✅       | —             | Ed25519 秘密鍵（32 bytes, Base64 or hex）サーバー側 JWT 署名用          |
-| `JWT_SERVER_PUBLIC_KEY`        | ✅       | —             | Ed25519 公開鍵（32 bytes, Base64 or hex）JWT 検証用                     |
-| `STRIPE_SECRET_KEY`            | ✅       | —             | Stripe テスト/本番シークレットキー (`sk_test_...` / `sk_live_...`)      |
-| `KAFKA_BROKERS`                | ❌       | (disabled)    | Kafka ブローカーアドレス。未設定の場合 Kafka は無効化されます           |
-| `APPROVAL_REQUIRED_ABOVE`      | ❌       | `100000`      | この金額（サブユニット）を超えた決済は Human-in-the-Loop 承認が必要     |
-| `APPROVAL_WEBHOOK_URL`         | ❌       | —             | 承認リクエスト通知先 Webhook URL                                        |
-| `RUST_LOG`                     | ❌       | `info`        | ログレベル (`trace`, `debug`, `info`, `warn`, `error`)                  |
-| `HOST`                         | ❌       | `0.0.0.0`     | Axum HTTP サーバーバインドアドレス                                      |
-| `PORT`                         | ❌       | `8000`        | Axum HTTP サーバーポート                                                |
+| Variable / 変数名                  | Required | Default                              | Description / 説明                                                              |
+| ---------------------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------------------- |
+| `DATABASE_URL`                     | ✅       | —                                    | PostgreSQL 接続 URL                                                             |
+| `STRIPE_SECRET_KEY`                | ✅       | —                                    | Stripe シークレットキー (`sk_test_...` / `sk_live_...`)                         |
+| `REDIS_URL`                        | ❌       | `redis://localhost:6379`             | Redis 接続 URL                                                                  |
+| `JWT_SERVER_PRIVATE_KEY`           | ❌       | (自動生成・起動時に stderr 出力)     | Ed25519 秘密鍵（Base64 32 bytes）。未設定時は起動毎に新しい鍵が生成されます     |
+| `JWT_SERVER_PUBLIC_KEY`            | ❌       | (自動生成・起動時に stderr 出力)     | Ed25519 公開鍵（Base64 32 bytes）。永続化する場合は明示的に設定してください     |
+| `KAFKA_BROKERS`                    | ❌       | (無効)                               | Kafka ブローカーアドレス。未設定の場合 Kafka は無効化されます                   |
+| `APPROVAL_REQUIRED_ABOVE`          | ❌       | `30000`                              | この金額（最小通貨単位）を超えた決済は Human-in-the-Loop 承認が必要             |
+| `APPROVAL_WEBHOOK_DEFAULT_URL`     | ❌       | —                                    | 承認リクエスト通知先 Webhook URL                                                |
+| `APPROVAL_EXPIRY_HOURS`            | ❌       | `24`                                 | 承認待ちリクエストの有効期限（時間）                                            |
+| `STRIPE_WEBHOOK_SECRET`            | ❌       | —                                    | Stripe Webhook 署名検証シークレット (`whsec_...`)                               |
+| `CORS_ORIGINS`                     | ❌       | `http://localhost:3000,...`          | CORS 許可オリジン（カンマ区切り）                                               |
+| `DID_STORE_PATH`                   | ❌       | `./data/dids`                        | DID ドキュメントストアのパス                                                    |
+| `RATE_LIMIT_PER_AGENT_PER_MINUTE`  | ❌       | `60`                                 | エージェントあたりの毎分リクエスト上限                                          |
+| `RATE_LIMIT_PER_IP_PER_MINUTE`     | ❌       | `120`                                | IP あたりの毎分リクエスト上限                                                   |
+| `PORT`                             | ❌       | `8000`                               | HTTP サーバーポート                                                             |
+| `RUST_LOG`                         | ❌       | `info`                               | ログレベル (`trace`, `debug`, `info`, `warn`, `error`)                          |
+
+> **JWT 鍵の自動生成について**: `JWT_SERVER_PRIVATE_KEY` が未設定の場合、サーバー起動時にエフェメラルな Ed25519 鍵ペアを自動生成し、Base64 エンコードされた値を stderr に出力します。開発環境ではそのまま使用可能ですが、**本番環境または再起動をまたいで JWT を有効にしたい場合は、出力された値を `.env` に設定してください**（未設定のまま再起動すると全 JWT が無効化されます）。
 
 ```env
 # server-rust/.env (最小構成)
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/agenttrust
-REDIS_URL=redis://localhost:6379
-JWT_SERVER_PRIVATE_KEY=<base64 or hex encoded 32-byte Ed25519 private key>
-JWT_SERVER_PUBLIC_KEY=<base64 or hex encoded 32-byte Ed25519 public key>
 STRIPE_SECRET_KEY=<your_stripe_test_secret_key>
 
+# 推奨: 初回起動後に stderr 出力された鍵を設定
+JWT_SERVER_PRIVATE_KEY=
+JWT_SERVER_PUBLIC_KEY=
+
 # Kafka を有効にする場合
-KAFKA_BROKERS=kafka:9092
+# KAFKA_BROKERS=kafka:9092
 ```
 
 ---
@@ -324,18 +332,32 @@ cd agenttrust-protocol
 cd docker
 cp ../server-rust/.env.example .env
 # .env を編集: STRIPE_SECRET_KEY を設定
-# Kafka を有効にする場合: KAFKA_BROKERS=kafka:9092 を追加
 
 # ※ 初回ビルドは依存クレート(400+パッケージ)のコンパイルのため15〜25分かかります
 docker-compose up
-
-# または Rust サーバーをローカルで起動（Kafka なしでも動作）
-cd ../server-rust
-cargo run
 ```
 
 - REST API: http://localhost:8000/health
 - gRPC: localhost:50052
+
+#### ローカル起動（Docker なし）
+
+```bash
+cd server-rust
+cp .env.example .env
+# .env を編集: DATABASE_URL / STRIPE_SECRET_KEY を設定
+
+# 1. データベースマイグレーション
+#    sqlx-cli が必要: cargo install sqlx-cli --no-default-features --features rustls,postgres
+sqlx database create
+sqlx migrate run
+
+# 2. サーバー起動（初回のみ JWT 鍵を自動生成して stderr 出力）
+cargo run
+# → Generated JWT_SERVER_PRIVATE_KEY=AAAA...
+# → Generated JWT_SERVER_PUBLIC_KEY=BBBB...
+# 出力された値を .env に設定すると、再起動後も JWT が有効になります
+```
 
 ### Option B: Python Server (Phase 1) — Legacy
 
@@ -506,22 +528,56 @@ asyncio.run(main())
 
 ---
 
-## A2A Saga — 10-Step Transaction Flow / 10ステップ Saga フロー
+## Trust Score Formula / 信頼スコア算出式
+
+信頼スコアは 0〜100 の整数値で、以下の 5 つのメトリクスから算出されます。
+
+```
+trust_score = 50 + floor(raw_score × 50)   ← 最小 50、最大 100
+
+raw_score =
+    success_rate          × 0.30   # 決済成功率
+  + (1 − dispute_rate)   × 0.25   # 紛争なし率
+  + min(tx_count/1000,1) × 0.15   # 取引量スコア
+  + min(counterparties/50,1) × 0.15  # 取引先多様性スコア
+  + min(account_age_days/365,1) × 0.15  # アカウント年齢スコア
+```
+
+| Metric / メトリクス       | Weight | Description / 説明                              |
+| ------------------------- | ------ | ----------------------------------------------- |
+| `success_rate`            | 30%    | 成功取引数 / 総取引数（取引なし時は 1.0）        |
+| `1 − dispute_rate`        | 25%    | 紛争なし率（現在は常に 1.0 — Known Limitations 参照） |
+| `volume_score`            | 15%    | 総取引数が 1,000 件で満点                        |
+| `diversity_score`         | 15%    | ユニーク取引先数が 50 で満点                     |
+| `age_score`               | 15%    | アカウント登録から 365 日で満点                  |
+
+**Risk Level Mapping** (VC / A2A 送金での信頼スコア解釈):
+
+| Score | Risk Level | A2A 参加可否 |
+| ----- | ---------- | ------------ |
+| 80–100 | `low`     | ✅ 許可      |
+| 60–79  | `medium`  | ✅ 許可      |
+| 40–59  | `high`    | ✅ 許可      |
+| 0–39   | `critical`| ❌ 拒否（最低閾値 30 未満）|
+
+---
+
+## A2A Saga — 10-Step Transaction Flow / 10 ステップ Saga フロー
 
 A2A 送金は分散トランザクション（Saga パターン）として管理されます。各ステップは前のステップが成功してから実行され、失敗時は**逆順に補償トランザクション**が実行されます。
 
-| Step | Name                  | Action / アクション                                       | Compensation / 補償アクション           |
-| ---- | --------------------- | --------------------------------------------------------- | --------------------------------------- |
-| 0    | `flow_check`          | レート制限・ペア制限・チェーン深度・循環検知              | (なし)                                  |
-| 1    | `did_verify_both`     | 送信者・受信者の DID 解決・存在確認                       | (なし)                                  |
-| 2    | `trust_mutual_check`  | 双方の信頼スコアが最低閾値（30）以上か確認                | (なし)                                  |
-| 3    | `fraud_check`         | 不正検知ルールエンジン実行（block なら中断）              | (なし)                                  |
-| 4    | `escrow_fund`         | Stripe Connect でエスクロー口座に資金を拘束               | エスクロー返金（送信者へ）              |
-| 5    | `notify_receiver`     | 受信者エージェントにサービス依頼を通知                    | 通知キャンセル                          |
-| 6    | `await_completion`    | ⏸ **受信者のサービス完了報告を待機**（タイムアウト付き） | エスクロー返金（送信者へ）              |
-| 7    | `escrow_release`      | サービス確認後、エスクロー資金を受信者へ解放              | (不可逆 — 人手介入)                     |
-| 8    | `audit_record`        | 双方の監査ログ（ハッシュチェーン）に取引を記録            | 監査ログへのエラー記録                  |
-| 9    | `trust_update`        | 双方の信頼スコアを再計算・更新                            | (なし)                                  |
+| Step | Name                 | Action / アクション                                      | Compensation / 補償アクション |
+| ---- | -------------------- | -------------------------------------------------------- | ----------------------------- |
+| 0    | `flow_check`         | レート制限・ペア制限・チェーン深度・循環検知             | (なし)                        |
+| 1    | `did_verify_both`    | 送信者・受信者の DID 解決・存在確認                      | (なし)                        |
+| 2    | `trust_mutual_check` | 双方の信頼スコアが最低閾値（30）以上か確認               | (なし)                        |
+| 3    | `fraud_check`        | 不正検知ルールエンジン実行（block なら中断）             | (なし)                        |
+| 4    | `escrow_fund`        | Stripe Connect でエスクロー口座に資金を拘束              | エスクロー返金（送信者へ）    |
+| 5    | `notify_receiver`    | 受信者エージェントにサービス依頼を通知                   | 通知キャンセル                |
+| 6    | `await_completion`   | ⏸ **受信者のサービス完了報告を待機**（タイムアウト付き） | エスクロー返金（送信者へ）    |
+| 7    | `escrow_release`     | サービス確認後、エスクロー資金を受信者へ解放             | (不可逆 — 人手介入)           |
+| 8    | `audit_record`       | 双方の監査ログ（ハッシュチェーン）に取引を記録           | 監査ログへのエラー記録        |
+| 9    | `trust_update`       | 双方の信頼スコアを再計算・更新                           | (なし)                        |
 
 > ステップ 6 はサービス完了を待機する**非同期チェックポイント**です。受信者が `/saga/:id/complete` を呼び出すか、タイムアウト（デフォルト 60 分）で自動補償が実行されます。
 
@@ -733,14 +789,30 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 
 現在の実装における既知の制限事項です。Phase 5 以降で順次対応予定です。
 
-| Item / 項目                        | Status / 状況 | Detail / 詳細                                                                                                  |
-| ---------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `dispute_rate` in trust score      | ⚠️ 暫定実装  | 信頼スコアの dispute_rate は現在常に `0.0` が返されます。紛争履歴を反映した実装は Phase 5 で対応予定。         |
-| Kafka トピック                     | ⚠️ 簡略化    | アーキテクチャ図では複数トピックを示していますが、現実装では `agent.trust.events` 単一トピックを使用しています。|
-| gRPC TLS                           | ⚠️ 非対応    | 現在の gRPC サーバー（port 50052）は TLS なし（plaintext）で起動します。本番環境では TLS 設定が必須です。      |
-| Stripe Connect 本番連携            | ⚠️ 未完成    | エスクローの Stripe Connect 実装は構造が定義されていますが、実際の Connect アカウント間送金は未実装です。       |
-| Unit / Integration Tests (Phase 4) | ⚠️ 未整備    | Phase 4 コンポーネント（A2A / Escrow / Saga / Flow）の自動テストは未実装です。                                  |
-| Ed25519 鍵の自動生成               | ℹ️ 手動      | `JWT_SERVER_PRIVATE_KEY` / `JWT_SERVER_PUBLIC_KEY` は手動で設定が必要です。起動時の自動生成は非対応です。       |
+| Item / 項目                        | Status / 状況 | Detail / 詳細                                                                                                                                                            |
+| ---------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dispute_rate` in trust score      | ⚠️ 暫定実装   | 信頼スコアの dispute_rate は現在常に `0.0` が返されます。紛争履歴を反映した実装は Phase 5 で対応予定。                                                                   |
+| Kafka トピック                     | ⚠️ 簡略化     | アーキテクチャ図では複数トピックを示していますが、現実装では `agent.trust.events` 単一トピックを使用しています。                                                          |
+| gRPC TLS                           | ⚠️ 非対応     | 現在の gRPC サーバー（port 50052）は TLS なし（plaintext）で起動します。本番環境では TLS 設定が必須です。                                                                 |
+| Stripe Connect 本番連携            | ⚠️ 未完成     | エスクローの Stripe Connect 実装は構造が定義されていますが、実際の Connect アカウント間送金は未実装です。                                                                 |
+| Unit / Integration Tests (Phase 4) | ⚠️ 未整備     | Phase 4 コンポーネント（A2A / Escrow / Saga / Flow）の自動テストは未実装です。                                                                                            |
+| JWT 鍵のエフェメラル動作           | ℹ️ 注意       | `JWT_SERVER_PRIVATE_KEY` 未設定時、起動毎に新しい鍵ペアを生成します。**再起動すると全 JWT が無効化されます**。永続化するには stderr 出力された値を `.env` に設定してください。 |
+
+---
+
+## Troubleshooting / トラブルシューティング
+
+| Symptom / 症状                                        | Cause / 原因                               | Fix / 解決策                                                                 |
+| ----------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| `error: could not find system library 'protobuf'`     | `protoc` 未インストール                    | `brew install protobuf` / `apt install protobuf-compiler`                    |
+| `cmake: command not found` (rdkafka ビルドエラー)     | `cmake` 未インストール                     | `brew install cmake` / `apt install cmake`                                   |
+| `DATABASE_URL must be set`                            | `.env` が未作成または未設定               | `cp .env.example .env` して `DATABASE_URL` を設定                            |
+| `migration failed: relation "..." does not exist`     | マイグレーション未実行                     | `sqlx migrate run`（`sqlx-cli` 要インストール）                              |
+| JWT が再起動後に無効になる                            | 鍵未設定でエフェメラル動作中              | 起動時 stderr の `JWT_SERVER_PRIVATE_KEY=...` を `.env` に設定               |
+| `FLOW_VIOLATION 429` が常に返る                       | Redis 未起動またはフローポリシーが厳しい  | Redis 起動確認 / `POST /flow/configure` でレート制限を緩和                   |
+| gRPC 接続拒否（port 50052）                           | gRPC サーバーが TLS を要求               | `grpcurl -plaintext ...`（`-plaintext` フラグが必要）                        |
+| 初回 Docker ビルドが途中で停止                        | メモリ/ディスク不足（Rust ビルドは重い）  | Docker Desktop のメモリを 8GB 以上に設定 / ディスク空き容量を確認            |
+| `cargo test` で DB 関連テストが失敗                   | テスト用 DB が未起動                       | `TEST_SERVER_URL=http://localhost:8000 cargo test`（サーバー起動後に実行）   |
 
 ---
 
@@ -799,6 +871,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Links / リンク
 
-- 📖 **Documentation**: https://momo1235656.github.io/agenttrust-protocol/docs/
+- 📖 **Documentation**: https://momo1235656.github.io/agenttrust-protocol/
 - 🐛 **Issues**: https://github.com/momo1235656/agenttrust-protocol/issues
 - 💬 **Discussions**: https://github.com/momo1235656/agenttrust-protocol/discussions
