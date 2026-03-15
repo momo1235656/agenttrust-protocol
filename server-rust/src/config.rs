@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use base64::Engine;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 
 /// Application configuration. Loaded from environment variables.
