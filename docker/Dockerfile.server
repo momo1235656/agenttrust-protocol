@@ -14,7 +14,7 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && cargo 
 # Build the actual application
 COPY server-rust/src ./src
 COPY server-rust/migrations ./migrations
-RUN touch src/main.rs && cargo build --release
+RUN find src -name '*.rs' | xargs touch && cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
