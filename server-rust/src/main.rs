@@ -68,6 +68,9 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::oauth::router())
         .merge(routes::approval::router())
         .merge(routes::health::router())
+        .merge(routes::trust::router())
+        .merge(routes::vc::router())
+        .merge(routes::fraud::router())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state);
