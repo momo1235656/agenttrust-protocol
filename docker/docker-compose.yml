@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: agenttrust
+      POSTGRES_USER: agenttrust
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agenttrust_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenttrust"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://agenttrust:${POSTGRES_PASSWORD:-agenttrust_dev}@postgres:5432/agenttrust
+      REDIS_URL: redis://redis:6379
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      JWT_SERVER_PRIVATE_KEY: ${JWT_SERVER_PRIVATE_KEY:-}
+      JWT_SERVER_PUBLIC_KEY: ${JWT_SERVER_PUBLIC_KEY:-}
+      PORT: 8000
+      RUST_LOG: agenttrust_server=info,tower_http=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

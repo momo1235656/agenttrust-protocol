@@ -1,0 +1,74 @@
+[package]
+name = "agenttrust-server"
+version = "0.2.0"
+edition = "2021"
+
+[[bin]]
+name = "agenttrust-server"
+path = "src/main.rs"
+
+[lib]
+name = "agenttrust_server"
+path = "src/lib.rs"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database (compile-time query checking requires DATABASE_URL or `sqlx prepare`)
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid"] }
+
+# Redis
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# Cryptography
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+bs58 = "0.5"
+jsonwebtoken = "9"
+
+# HTTP client (Stripe API calls)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# Configuration
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "1"
+anyhow = "1"
+
+# Zeroize for secure memory cleanup
+zeroize = { version = "1", features = ["derive"] }
+
+# Async trait for PaymentProvider
+async-trait = "0.1"
+
+# Password hashing (for OAuth client secrets)
+bcrypt = "0.15"
+
+# Hex encoding (for SHA-256 hash formatting)
+hex = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# For unit tests that need tokio runtime
+tokio = { version = "1", features = ["full"] }
