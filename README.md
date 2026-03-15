@@ -78,7 +78,7 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 
 ## Architecture / アーキテクチャ
 
-### Phase 2 (Current) — Rust/Axum Server
+### Phase 3 (Current) — Trust, VC, Fraud Detection, On-chain DID
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -94,7 +94,7 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
           └────────────┼────────────┘
                        │ HTTP REST API（100% 後方互換）
 ┌──────────────────────▼──────────────────────────────────────┐
-│         AgentTrust Server — Rust / Axum 0.7 (Phase 2)       │
+│         AgentTrust Server — Rust / Axum 0.7 (Phase 3)       │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐      │
 │  │  DID API │ │ Auth API │ │  Pay API │ │ Audit API │      │
 │  └──────────┘ └──────────┘ └──────────┘ └───────────┘      │
@@ -103,15 +103,22 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 │  │  (RFC    │ │ Human-in-    │ │ Rate Limiter (Redis)   │  │
 │  │  6749)   │ │ the-Loop     │ │ Stripe / PayPay        │  │
 │  └──────────┘ └──────────────┘ └────────────────────────┘  │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
+│  │ Trust Score  │ │  VC Issuer   │ │  Fraud Detection     │ │
+│  │ Engine       │ │  (W3C VC     │ │  Engine (5 rules,    │ │
+│  │ (0–100点)    │ │  Data Model  │ │  gRPC ML service)    │ │
+│  │              │ │  2.0)        │ │                      │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────┘ │
 │  ┌──────────────────────────┐  ┌──────────────────────────┐ │
 │  │  PostgreSQL 16           │  │  Ed25519 Crypto (pure    │ │
-│  │  (agents, transactions,  │  │  Rust, no OpenSSL)       │ │
-│  │  audit_logs, oauth_*,    │  │  SHA-256 Hash Chain      │ │
-│  │  approvals)              │  │  JWT via PKCS8 DER       │ │
+│  │  (+ trust_scores, VCs,   │  │  Rust, no OpenSSL)       │ │
+│  │   fraud_alerts)          │  │  SHA-256 Hash Chain      │ │
 │  └──────────────────────────┘  └──────────────────────────┘ │
-│                     ┌──────────┐                             │
-│                     │  Redis 7 │ (session / rate limit)      │
-│                     └──────────┘                             │
+│       ┌──────────┐   ┌──────────────────────────────────┐   │
+│       │  Redis 7 │   │  Anvil (Foundry) L2 node         │   │
+│       │ (rate    │   │  DIDRegistry.sol on Polygon Amoy │   │
+│       │  limit)  │   └──────────────────────────────────┘   │
+│       └──────────┘                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -119,7 +126,7 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 
 ## Tech Stack / 技術スタック
 
-### Phase 2 — Rust Server (Current)
+### Phase 3 — Rust Server (Current)
 
 | Layer / 層 | Technology / 技術 | Reason / 採用理由 |
 |-----------|-------------------|-----------------|
@@ -132,6 +139,11 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 | OAuth 2.0 | Custom implementation | RFC 6749 compliant |
 | Human-in-Loop | Webhook + approval table | Async approval flow |
 | Circuit Breaker | In-memory (atomic counters) | Zero-latency state check |
+| **Trust Score Engine** | **Weighted formula (5 metrics)** | 取引履歴から信頼スコア(0–100)を算出 |
+| **VC Issuer** | **W3C VC Data Model 2.0** | Ed25519署名付き検証可能クレデンシャル発行 |
+| **Fraud Detection** | **Rule engine (5 rules)** | リアルタイム不正検知・リスクスコア算出 |
+| **DID Registry (L2)** | **Solidity + Foundry** | Polygon Amoy オンチェーンDID管理 |
+| **ML Service** | **Python gRPC** | 不正検知ルールエンジン（Rust実装のミラー） |
 
 ### Phase 1 — Python Server (Legacy, still functional)
 
@@ -158,7 +170,7 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 ```
 agenttrust-protocol/
 │
-├── server-rust/              # ★ Phase 2: Rust/Axum サーバー
+├── server-rust/              # ★ Phase 3: Rust/Axum サーバー
 │   ├── Cargo.toml
 │   ├── src/
 │   │   ├── main.rs           #   エントリーポイント
@@ -166,12 +178,28 @@ agenttrust-protocol/
 │   │   ├── error.rs          #   統一エラー型
 │   │   ├── state.rs          #   AppState (DB/Redis/CircuitBreaker)
 │   │   ├── crypto/           #   Ed25519、SHA-256、JWT（純粋Rust）
-│   │   ├── routes/           #   Axum HTTPハンドラ（19エンドポイント）
-│   │   ├── services/         #   ビジネスロジック
+│   │   ├── routes/           #   Axum HTTPハンドラ（28エンドポイント）
+│   │   │   ├── trust.rs      #   ★ Phase 3: 信頼スコア API
+│   │   │   ├── vc.rs         #   ★ Phase 3: 検証可能クレデンシャル API
+│   │   │   └── fraud.rs      #   ★ Phase 3: 不正検知 API
+│   │   ├── services/
+│   │   │   ├── trust_service.rs  # ★ Phase 3: スコア算出ロジック
+│   │   │   ├── vc_service.rs     # ★ Phase 3: VC 発行・検証・失効
+│   │   │   └── fraud_service.rs  # ★ Phase 3: 不正ルールエンジン
 │   │   ├── models/           #   SQLxモデル（PostgreSQL）
 │   │   ├── middleware/        #   JWT認証・レート制限・CB
 │   │   └── payment_providers/ #   Stripe/PayPay（トレイト抽象化）
-│   └── migrations/           #   PostgreSQL マイグレーション SQL
+│   └── migrations/           #   PostgreSQL マイグレーション SQL (009まで)
+│
+├── contracts/                # ★ Phase 3: Solidity スマートコントラクト
+│   ├── foundry.toml          #   Foundry 設定（Polygon Amoy）
+│   ├── src/DIDRegistry.sol   #   オンチェーン DID レジストリ
+│   ├── test/DIDRegistry.t.sol #  Foundry テスト（9ケース）
+│   └── script/Deploy.s.sol   #   デプロイスクリプト
+│
+├── ml-service/               # ★ Phase 3: Python gRPC 不正検知サービス
+│   ├── service/rule_engine.py #  Rust ルールエンジンのミラー実装
+│   └── tests/test_rules.py   #  pytest テスト（5ケース）
 │
 ├── server/                   # Phase 1: FastAPI サーバー（非推奨・動作維持）
 │   ├── main.py
@@ -181,23 +209,27 @@ agenttrust-protocol/
 │   ├── schemas/
 │   └── crypto/
 │
-├── sdk/                      # Python SDK（変更なし）
+├── sdk/                      # Python SDK
 │   ├── wallet.py             #   AgentWallet（メインクラス）
 │   ├── tools.py              #   LangChain BaseTool 統合
 │   ├── autogen_tools.py      #   AutoGen v0.4+ ツール
 │   ├── openclaw_tools.py     #   OpenClaw アクション
-│   └── client.py             #   HTTP クライアント
+│   ├── client.py             #   HTTP クライアント
+│   ├── trust.py              #   ★ Phase 3: TrustScoreClient
+│   └── vc.py                 #   ★ Phase 3: VCClient
 │
-├── sdk-ts/                   # TypeScript SDK（変更なし）
+├── sdk-ts/                   # TypeScript SDK
 │   └── src/
 │       ├── wallet.ts
 │       ├── client.ts
-│       └── crypto.ts
+│       ├── crypto.ts
+│       ├── trust.ts          #   ★ Phase 3: TrustScoreClient
+│       └── vc.ts             #   ★ Phase 3: VCClient
 │
 ├── mcp-server/               # MCP サーバー（変更なし）
 │
-├── docker/                   # ★ Phase 2: Docker 構成
-│   ├── docker-compose.yml    #   PostgreSQL + Redis + Rustサーバー
+├── docker/                   # ★ Phase 3: Docker 構成
+│   ├── docker-compose.yml    #   PostgreSQL + Redis + Rust + ML + Anvil
 │   ├── Dockerfile.server     #   マルチステージ Rust ビルド
 │   └── init-db.sql
 │
@@ -275,12 +307,18 @@ pytest tests/ -v
 # TypeScript テスト
 cd sdk-ts && npm install && npm test
 
-# Rust 単体テスト (Phase 2)
+# Rust 単体テスト (Phase 2/3)
 cd server-rust
 cargo test test_crypto test_hashing test_circuit_breaker
 
 # Rust 統合テスト (サーバー起動後)
 TEST_SERVER_URL=http://localhost:8000 cargo test
+
+# DID Registry スマートコントラクト テスト (Phase 3, Foundry 必須)
+cd contracts && forge test -v
+
+# ML Service テスト (Phase 3)
+cd ml-service && pip install pytest && pytest tests/ -v
 ```
 
 ---
@@ -440,7 +478,7 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | `GET` | `/audit/{did}` | Get audit hash chain | 監査ログ取得 |
 | `POST` | `/audit/verify` | Verify chain integrity | チェーン整合性検証 |
 
-### Phase 2 New Endpoints — Rust Server のみ
+### Phase 2 Endpoints — Rust Server のみ
 
 | Method | Path | Description | 説明 |
 |--------|------|-------------|------|
@@ -455,6 +493,19 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | `POST` | `/payment/refund` | Refund payment | 返金 |
 | `GET` | `/payment/methods` | List payment methods | 決済手段一覧 |
 | `GET` | `/health` | Health check | ヘルスチェック |
+
+### Phase 3 New Endpoints — Trust / VC / Fraud
+
+| Method | Path | Description | 説明 |
+|--------|------|-------------|------|
+| `GET` | `/trust/:did/score` | Get latest trust score | 最新信頼スコア取得 |
+| `GET` | `/trust/:did/history` | Get score history | スコア履歴取得 |
+| `POST` | `/trust/:did/recalculate` | Recalculate trust score | スコア再計算・保存 |
+| `POST` | `/vc/issue` | Issue Verifiable Credential | VC 発行（Ed25519署名） |
+| `POST` | `/vc/verify` | Verify Verifiable Credential | VC 検証（署名・有効期限・失効） |
+| `POST` | `/vc/revoke` | Revoke Verifiable Credential | VC 失効 |
+| `POST` | `/fraud/check` | Check transaction for fraud | トランザクション不正チェック |
+| `GET` | `/fraud/:did/alerts` | Get fraud alerts | 不正アラート一覧取得 |
 
 ---
 
@@ -506,9 +557,9 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 |-------|--------|---------|
 | **MVP** | ✅ Done | FastAPI server, Python SDK, SQLite, Stripe, hash chain audit |
 | **Phase 1** | ✅ Done | TypeScript SDK, AutoGen, OpenClaw, MCP server, MkDocs, CI/CD |
-| **Phase 2** | ✅ **Done** | **Rust/Axum server**, PostgreSQL, Redis, OAuth 2.0, Human-in-the-Loop, Circuit Breaker |
-| **Phase 3** | 🔜 Planned | Production deployment (AWS/GCP), monitoring (Prometheus/Grafana) |
-| **Phase 4** | 🔜 Planned | On-chain DID anchoring (Ethereum / Solana) |
+| **Phase 2** | ✅ Done | Rust/Axum server, PostgreSQL, Redis, OAuth 2.0, Human-in-the-Loop, Circuit Breaker |
+| **Phase 3** | ✅ **Done** | **Trust Score Engine**, **W3C VC Issuer** (Ed25519), **Fraud Detection** (rule engine + gRPC ML), **DID Registry on L2** (Solidity/Foundry/Polygon Amoy) |
+| **Phase 4** | 🔜 Planned | Production deployment (AWS/GCP), monitoring (Prometheus/Grafana) |
 | **Phase 5** | 🔜 Planned | `agenttrust-crypto` crate (PyO3 bindings for Python SDK) |
 
 ---
@@ -527,6 +578,36 @@ cd server-rust && cargo test
 # プルリクエストを作成
 gh pr create
 ```
+
+---
+
+## Disclaimer / 免責事項
+
+**English:**
+
+AgentTrust Protocol is a **research and prototype project** intended for educational and experimental purposes. By using this software, you agree to the following:
+
+1. **Not Production-Ready Financial Software** — This project has not been audited for production use. Do not use it to process real financial transactions without conducting your own comprehensive security review.
+2. **No Financial Liability** — The authors and contributors accept no responsibility for any financial losses, failed transactions, double charges, or payment errors arising from the use of this software.
+3. **Unaudited Smart Contracts** — The Solidity smart contracts (`DIDRegistry.sol`) have not been formally audited. Deploying unaudited contracts to mainnet or any network holding real funds is strongly discouraged.
+4. **Experimental AI Agent Payments** — Granting AI agents the ability to execute real-world payments carries inherent risk. You are solely responsible for configuring appropriate spending limits and human-in-the-loop controls.
+5. **No Regulatory Compliance Guarantee** — This software does not guarantee compliance with financial regulations (PCI-DSS, GDPR, FATF, etc.) in your jurisdiction. Consult a legal professional before deploying in any regulated environment.
+6. **Cryptographic Keys** — Loss of an Ed25519 private key results in permanent loss of the associated agent identity. There is no key recovery mechanism.
+7. **Third-Party Services** — This project integrates with Stripe, Polygon, and other third-party services under their respective terms of service. The authors are not affiliated with these providers.
+8. **Use at Your Own Risk** — This software is provided "AS IS," without warranty of any kind. See the [MIT License](LICENSE) for full terms.
+
+**日本語:**
+
+AgentTrust Protocol は**教育・実験目的の研究プロトタイプ**です。本ソフトウェアを使用することで、以下の事項に同意したものとみなします。
+
+1. **本番環境向け金融ソフトウェアではありません** — 本プロジェクトは本番利用のための監査を受けていません。独自のセキュリティレビューを実施せずに実際の金融取引に使用しないでください。
+2. **金融上の損失に関する免責** — 本ソフトウェアの使用によって生じた金銭的損失、取引の失敗、二重請求、決済エラーなどについて、著作者および貢献者は一切の責任を負いません。
+3. **未監査スマートコントラクト** — Solidityスマートコントラクト（`DIDRegistry.sol`）は正式なセキュリティ監査を受けていません。実資金を扱うネットワークへの未監査コントラクトのデプロイは強く非推奨とします。
+4. **AIエージェント決済の固有リスク** — AIエージェントに実際の決済権限を付与することには固有のリスクが伴います。適切な支払い上限とHuman-in-the-Loop制御の設定は利用者の責任において行ってください。
+5. **法規制コンプライアンスの非保証** — 本ソフトウェアは、お使いの地域における金融規制（PCI-DSS・GDPR・FATF等）への準拠を保証しません。規制対象の環境でのデプロイ前に法律の専門家にご相談ください。
+6. **暗号鍵の管理** — Ed25519秘密鍵を紛失した場合、対応するエージェントIDは永久に失われます。鍵の復元機能はありません。
+7. **サードパーティサービス** — 本プロジェクトはStripe・Polygon等のサードパーティサービスをそれぞれの利用規約に基づき利用します。著作者はこれらのプロバイダーとは無関係です。
+8. **自己責任での使用** — 本ソフトウェアは「現状のまま（AS IS）」提供され、いかなる種類の保証もありません。詳細は[MITライセンス](LICENSE)をご参照ください。
 
 ---
 
