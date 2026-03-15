@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
     // PostgreSQL connection pool
     let db_pool = PgPoolOptions::new()
         .max_connections(20)
-        .connect(config.database_url())
+        .connect(&config.database_url)
         .await?;
 
     // Run migrations
