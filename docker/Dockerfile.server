@@ -9,7 +9,7 @@ WORKDIR /app
 # Cache dependencies
 COPY server-rust/Cargo.toml ./
 COPY server-rust/Cargo.loc[k] ./
-RUN mkdir src && echo 'fn main() {}' > src/main.rs && cargo build --release && rm src/main.rs
+RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && cargo build --release && rm src/main.rs src/lib.rs
 
 # Build the actual application
 COPY server-rust/src ./src
