@@ -13,14 +13,14 @@
 ## What is AgentTrust? / AgentTrustとは？
 
 **English:**
-AI agents are increasingly capable of taking real-world actions — including making purchases. But they have no passport, no bank account, and no credit history. AgentTrust solves this by giving every AI agent a cryptographic identity (DID), a permission-scoped access token (JWT), and a tamper-proof transaction log (hash chain).
+AI agents are increasingly capable of taking real-world actions — including making purchases and trading services with each other. But they have no passport, no bank account, and no credit history. AgentTrust solves this by giving every AI agent a cryptographic identity (DID), a permission-scoped access token (JWT), a tamper-proof transaction log (hash chain), and now a full **Agent-to-Agent (A2A) payment layer** backed by escrow, saga orchestration, and flow control.
 
-Think of it as **OAuth + identity + audit logging, purpose-built for AI agents**.
+Think of it as **OAuth + identity + audit logging + A2A escrow payments, purpose-built for AI agents**.
 
 **日本語:**
-AIエージェントは購入・予約・契約といったリアルワールドのアクションを実行できるようになっています。しかし、エージェントには「身分証明書」も「銀行口座」も「信用情報」もありません。AgentTrustはこの問題を解決します。すべてのAIエージェントに、暗号学的なID（DID）、権限スコープ付きアクセストークン（JWT）、改ざん不能な取引記録（ハッシュチェーン）を付与します。
+AIエージェントは購入・予約・契約だけでなく、**エージェント同士でサービスを取引する**ようになっています。しかし、エージェントには「身分証明書」も「銀行口座」も「信用情報」もありません。AgentTrustはこの問題を解決します。すべてのAIエージェントに、暗号学的なID（DID）、権限スコープ付きアクセストークン（JWT）、改ざん不能な取引記録（ハッシュチェーン）、そして**エスクロー決済・Sagaオーケストレーション・フロー制御を備えたA2A決済レイヤー**を付与します。
 
-一言でいえば、**「AIエージェント専用のOAuth + ID + 監査ログ基盤」**です。
+一言でいえば、**「AIエージェント専用のOAuth + ID + 監査ログ + A2Aエスクロー決済基盤」**です。
 
 ---
 
@@ -78,55 +78,62 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 
 ## Architecture / アーキテクチャ
 
-### Phase 3 (Current) — Trust, VC, Fraud Detection, On-chain DID
+### Phase 4 (Current) — A2A Payments, Escrow, Saga, Flow Control, Kafka, gRPC
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    AI Agent (your code)                      │
-│            LangChain / AutoGen / OpenClaw / MCP             │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ SDK（変更なし）
-          ┌────────────┼────────────┐
-          │            │            │
-    Python SDK   TypeScript SDK   MCP Server
-    (sdk/)       (sdk-ts/)        (mcp-server/)
-          │            │            │
-          └────────────┼────────────┘
-                       │ HTTP REST API（100% 後方互換）
-┌──────────────────────▼──────────────────────────────────────┐
-│         AgentTrust Server — Rust / Axum 0.7 (Phase 3)       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐      │
-│  │  DID API │ │ Auth API │ │  Pay API │ │ Audit API │      │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘      │
-│  ┌──────────┐ ┌──────────────┐ ┌────────────────────────┐  │
-│  │ OAuth2.0 │ │ Approval API │ │ Circuit Breaker        │  │
-│  │  (RFC    │ │ Human-in-    │ │ Rate Limiter (Redis)   │  │
-│  │  6749)   │ │ the-Loop     │ │ Stripe / PayPay        │  │
-│  └──────────┘ └──────────────┘ └────────────────────────┘  │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐ │
-│  │ Trust Score  │ │  VC Issuer   │ │  Fraud Detection     │ │
-│  │ Engine       │ │  (W3C VC     │ │  Engine (5 rules,    │ │
-│  │ (0–100点)    │ │  Data Model  │ │  gRPC ML service)    │ │
-│  │              │ │  2.0)        │ │                      │ │
-│  └──────────────┘ └──────────────┘ └──────────────────────┘ │
-│  ┌──────────────────────────┐  ┌──────────────────────────┐ │
-│  │  PostgreSQL 16           │  │  Ed25519 Crypto (pure    │ │
-│  │  (+ trust_scores, VCs,   │  │  Rust, no OpenSSL)       │ │
-│  │   fraud_alerts)          │  │  SHA-256 Hash Chain      │ │
-│  └──────────────────────────┘  └──────────────────────────┘ │
-│       ┌──────────┐   ┌──────────────────────────────────┐   │
-│       │  Redis 7 │   │  Anvil (Foundry) L2 node         │   │
-│       │ (rate    │   │  DIDRegistry.sol on Polygon Amoy │   │
-│       │  limit)  │   └──────────────────────────────────┘   │
-│       └──────────┘                                           │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│            AI Agent A (sender)    AI Agent B (receiver)          │
+│            LangChain / AutoGen / OpenClaw / MCP                  │
+└─────────────┬─────────────────────────────────┬──────────────────┘
+              │ SDK                              │ SDK / gRPC
+   ┌──────────┼──────────────┐      ┌───────────┴──────────────┐
+   │  Python SDK  TS SDK  MCP│      │  gRPC Client (port 50052)│
+   └──────────┼──────────────┘      └───────────┬──────────────┘
+              │ HTTP REST API（100% 後方互換）   │ gRPC
+┌─────────────▼─────────────────────────────────▼──────────────────┐
+│          AgentTrust Server — Rust / Axum 0.7 (Phase 4)           │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐           │
+│  │  DID API │ │ Auth API │ │  Pay API │ │ Audit API │           │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────┘           │
+│  ┌──────────┐ ┌──────────────┐ ┌──────────────────────────────┐ │
+│  │ OAuth2.0 │ │ Approval API │ │ Trust Score / VC / Fraud     │ │
+│  └──────────┘ └──────────────┘ └──────────────────────────────┘ │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                  ★ Phase 4: A2A Payment Layer              │  │
+│  │  ┌──────────────┐ ┌──────────────┐ ┌────────────────────┐ │  │
+│  │  │  A2A Service │ │   Escrow     │ │  Saga Orchestrator │ │  │
+│  │  │  (10-step)   │ │  (funded /   │ │  (10 steps +       │ │  │
+│  │  │              │ │   released / │ │   backward         │ │  │
+│  │  │              │ │   refunded / │ │   compensation)    │ │  │
+│  │  │              │ │   disputed)  │ │                    │ │  │
+│  │  └──────────────┘ └──────────────┘ └────────────────────┘ │  │
+│  │  ┌──────────────────────┐ ┌──────────────────────────────┐ │  │
+│  │  │  Flow Controller     │ │  gRPC Server (port 50052)    │ │  │
+│  │  │  (rate / pair /      │ │  InitiateTransfer            │ │  │
+│  │  │   chain depth / BFS) │ │  WatchTransfer (streaming)   │ │  │
+│  │  └──────────────────────┘ └──────────────────────────────┘ │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────┐  ┌──────────────────────────────┐  │
+│  │  PostgreSQL 16           │  │  Apache Kafka                │  │
+│  │  (+ a2a_transfers,       │  │  a2a.transfer / escrow /     │  │
+│  │   escrows, sagas,        │  │  saga / fraud / trust topics │  │
+│  │   saga_steps,            │  │  (best-effort, optional)     │  │
+│  │   flow_policies)         │  └──────────────────────────────┘  │
+│  └──────────────────────────┘                                     │
+│       ┌──────────┐   ┌──────────────────────────────────────┐    │
+│       │  Redis 7 │   │  Scheduler (tokio::time::interval)   │    │
+│       │ (flow    │   │  Escrow timeout / Saga timeout        │    │
+│       │  counters│   │  → 自動補償トランザクション (60s毎)  │    │
+│       │  + rate) │   └──────────────────────────────────────┘    │
+│       └──────────┘                                                │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Tech Stack / 技術スタック
 
-### Phase 3 — Rust Server (Current)
+### Phase 4 — Rust Server (Current)
 
 | Layer / 層 | Technology / 技術 | Reason / 採用理由 |
 |-----------|-------------------|-----------------|
@@ -134,16 +141,23 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 | Cryptography | **ed25519-dalek** (pure Rust) | No OpenSSL dependency |
 | JWT | **jsonwebtoken** (EdDSA) | Ed25519-signed tokens |
 | Database | **sqlx + PostgreSQL 16** | Async, connection pool |
-| Cache / Rate Limit | **Redis 7** | Sliding window rate limiting |
+| Cache / Rate Limit | **Redis 7** | Sliding window rate limiting + Flow counters |
 | Payment | **reqwest** → Stripe REST API | No heavy SDK dependency |
 | OAuth 2.0 | Custom implementation | RFC 6749 compliant |
 | Human-in-Loop | Webhook + approval table | Async approval flow |
 | Circuit Breaker | In-memory (atomic counters) | Zero-latency state check |
-| **Trust Score Engine** | **Weighted formula (5 metrics)** | 取引履歴から信頼スコア(0–100)を算出 |
-| **VC Issuer** | **W3C VC Data Model 2.0** | Ed25519署名付き検証可能クレデンシャル発行 |
-| **Fraud Detection** | **Rule engine (5 rules)** | リアルタイム不正検知・リスクスコア算出 |
-| **DID Registry (L2)** | **Solidity + Foundry** | Polygon Amoy オンチェーンDID管理 |
-| **ML Service** | **Python gRPC** | 不正検知ルールエンジン（Rust実装のミラー） |
+| Trust Score Engine | Weighted formula (5 metrics) | 取引履歴から信頼スコア(0–100)を算出 |
+| VC Issuer | W3C VC Data Model 2.0 | Ed25519署名付き検証可能クレデンシャル発行 |
+| Fraud Detection | Rule engine (5 rules) | リアルタイム不正検知・リスクスコア算出 |
+| DID Registry (L2) | Solidity + Foundry | Polygon Amoy オンチェーンDID管理 |
+| ML Service | Python gRPC | 不正検知ルールエンジン（Rust実装のミラー） |
+| **A2A Payment** | **Stripe Connect + Saga** | エージェント間の直接送金（10ステップSaga） |
+| **Escrow Service** | **PostgreSQL + Stripe Connect** | 取引完了まで資金を仮預かり（funded/released/refunded/disputed） |
+| **Saga Orchestrator** | **tokio async tasks** | 分散トランザクション管理・逆順補償トランザクション |
+| **Flow Controller** | **Redis counters + BFS** | レート制限・同一ペア制限・チェーン深度・循環検知 |
+| **Kafka Events** | **rdkafka 0.36** | イベント駆動アーキテクチャ（best-effort、オプション） |
+| **gRPC Server** | **tonic 0.11 + prost 0.12** | port 50052 でエージェント間高速通信 |
+| **Scheduler** | **tokio::time::interval** | エスクロー/Sagaタイムアウト自動補償（60秒毎） |
 
 ### Phase 1 — Python Server (Legacy, still functional)
 
@@ -170,66 +184,82 @@ Every transaction is recorded in an append-only SHA-256 hash chain. Each entry c
 ```
 agenttrust-protocol/
 │
-├── server-rust/              # ★ Phase 3: Rust/Axum サーバー
+├── server-rust/              # ★ Phase 4: Rust/Axum サーバー
 │   ├── Cargo.toml
+│   ├── build.rs              # ★ Phase 4: tonic proto コンパイル
+│   ├── proto/
+│   │   ├── payment.proto     # ★ Phase 4: gRPC サービス定義
+│   │   └── events.proto      # ★ Phase 4: Kafka イベント定義
 │   ├── src/
-│   │   ├── main.rs           #   エントリーポイント
+│   │   ├── main.rs           #   エントリーポイント（gRPC + Scheduler 起動）
 │   │   ├── config.rs         #   環境変数設定
 │   │   ├── error.rs          #   統一エラー型
-│   │   ├── state.rs          #   AppState (DB/Redis/CircuitBreaker)
+│   │   ├── state.rs          #   AppState (DB/Redis/Kafka/CircuitBreaker)
 │   │   ├── crypto/           #   Ed25519、SHA-256、JWT（純粋Rust）
-│   │   ├── routes/           #   Axum HTTPハンドラ（28エンドポイント）
-│   │   │   ├── trust.rs      #   ★ Phase 3: 信頼スコア API
-│   │   │   ├── vc.rs         #   ★ Phase 3: 検証可能クレデンシャル API
-│   │   │   └── fraud.rs      #   ★ Phase 3: 不正検知 API
+│   │   ├── events/           # ★ Phase 4: Kafka イベント型
+│   │   │   └── types.rs      #   AgentTrustEvent 共通構造
+│   │   ├── grpc/             # ★ Phase 4: gRPC サーバー（port 50052）
+│   │   │   ├── server.rs     #   tonic サーバー起動
+│   │   │   └── payment_grpc.rs # InitiateTransfer / WatchTransfer streaming
+│   │   ├── scheduler/        # ★ Phase 4: バックグラウンドジョブ
+│   │   │   ├── escrow_timeout.rs  # エスクロー期限切れ自動返金
+│   │   │   └── saga_timeout.rs    # Saga タイムアウト自動補償
+│   │   ├── routes/           #   Axum HTTPハンドラ（38エンドポイント）
+│   │   │   ├── trust.rs      #   Phase 3: 信頼スコア API
+│   │   │   ├── vc.rs         #   Phase 3: 検証可能クレデンシャル API
+│   │   │   ├── fraud.rs      #   Phase 3: 不正検知 API
+│   │   │   ├── a2a.rs        # ★ Phase 4: A2A 送金 API
+│   │   │   ├── escrow.rs     # ★ Phase 4: エスクロー API
+│   │   │   ├── saga.rs       # ★ Phase 4: Saga ステータス・完了・補償
+│   │   │   └── flow.rs       # ★ Phase 4: フロー制御ポリシー API
 │   │   ├── services/
-│   │   │   ├── trust_service.rs  # ★ Phase 3: スコア算出ロジック
-│   │   │   ├── vc_service.rs     # ★ Phase 3: VC 発行・検証・失効
-│   │   │   └── fraud_service.rs  # ★ Phase 3: 不正ルールエンジン
-│   │   ├── models/           #   SQLxモデル（PostgreSQL）
+│   │   │   ├── trust_service.rs  # Phase 3: スコア算出ロジック
+│   │   │   ├── vc_service.rs     # Phase 3: VC 発行・検証・失効
+│   │   │   ├── fraud_service.rs  # Phase 3: 不正ルールエンジン
+│   │   │   ├── kafka_service.rs  # ★ Phase 4: Kafka Producer（best-effort）
+│   │   │   ├── flow_service.rs   # ★ Phase 4: フロー制御・BFS チェーン深度
+│   │   │   ├── escrow_service.rs # ★ Phase 4: エスクロー CRUD
+│   │   │   ├── saga_service.rs   # ★ Phase 4: Saga ステップ管理・補償
+│   │   │   └── a2a_service.rs    # ★ Phase 4: A2A 送金オーケストレーション
+│   │   ├── models/
+│   │   │   ├── trust_score.rs / verifiable_credential.rs / fraud_alert.rs
+│   │   │   ├── a2a_transfer.rs   # ★ Phase 4
+│   │   │   ├── escrow.rs         # ★ Phase 4
+│   │   │   ├── saga.rs           # ★ Phase 4（Saga + SagaStep）
+│   │   │   └── flow_policy.rs    # ★ Phase 4
 │   │   ├── middleware/        #   JWT認証・レート制限・CB
 │   │   └── payment_providers/ #   Stripe/PayPay（トレイト抽象化）
-│   └── migrations/           #   PostgreSQL マイグレーション SQL (009まで)
+│   └── migrations/           #   PostgreSQL マイグレーション SQL (014まで)
+│       ├── 010_create_a2a_transfers.sql
+│       ├── 011_create_escrows.sql
+│       ├── 012_create_sagas.sql
+│       ├── 013_create_saga_steps.sql
+│       └── 014_create_flow_policies.sql
 │
-├── contracts/                # ★ Phase 3: Solidity スマートコントラクト
-│   ├── foundry.toml          #   Foundry 設定（Polygon Amoy）
+├── contracts/                # Phase 3: Solidity スマートコントラクト
 │   ├── src/DIDRegistry.sol   #   オンチェーン DID レジストリ
-│   ├── test/DIDRegistry.t.sol #  Foundry テスト（9ケース）
-│   └── script/Deploy.s.sol   #   デプロイスクリプト
+│   ├── test/DIDRegistry.t.sol
+│   └── script/Deploy.s.sol
 │
-├── ml-service/               # ★ Phase 3: Python gRPC 不正検知サービス
-│   ├── service/rule_engine.py #  Rust ルールエンジンのミラー実装
-│   └── tests/test_rules.py   #  pytest テスト（5ケース）
+├── ml-service/               # Phase 3: Python gRPC 不正検知サービス
 │
 ├── server/                   # Phase 1: FastAPI サーバー（非推奨・動作維持）
-│   ├── main.py
-│   ├── routers/              #   DID / Auth / Payment / Audit
-│   ├── services/
-│   ├── models/
-│   ├── schemas/
-│   └── crypto/
 │
 ├── sdk/                      # Python SDK
-│   ├── wallet.py             #   AgentWallet（メインクラス）
-│   ├── tools.py              #   LangChain BaseTool 統合
-│   ├── autogen_tools.py      #   AutoGen v0.4+ ツール
-│   ├── openclaw_tools.py     #   OpenClaw アクション
-│   ├── client.py             #   HTTP クライアント
-│   ├── trust.py              #   ★ Phase 3: TrustScoreClient
-│   └── vc.py                 #   ★ Phase 3: VCClient
+│   ├── wallet.py / tools.py / autogen_tools.py / openclaw_tools.py
+│   ├── client.py / trust.py / vc.py
+│   └── a2a.py                # ★ Phase 4: A2AClient
 │
 ├── sdk-ts/                   # TypeScript SDK
 │   └── src/
-│       ├── wallet.ts
-│       ├── client.ts
-│       ├── crypto.ts
-│       ├── trust.ts          #   ★ Phase 3: TrustScoreClient
-│       └── vc.ts             #   ★ Phase 3: VCClient
+│       ├── wallet.ts / client.ts / crypto.ts / trust.ts / vc.ts
+│       └── a2a.ts            # ★ Phase 4: A2AClient
 │
 ├── mcp-server/               # MCP サーバー（変更なし）
 │
-├── docker/                   # ★ Phase 3: Docker 構成
+├── docker/                   # ★ Phase 4: Docker 構成
 │   ├── docker-compose.yml    #   PostgreSQL + Redis + Rust + ML + Anvil
+│   │                         #   + Zookeeper + Kafka（Phase 4追加）
 │   ├── Dockerfile.server     #   マルチステージ Rust ビルド
 │   └── init-db.sql
 │
@@ -243,32 +273,35 @@ agenttrust-protocol/
 
 ## Quick Start / クイックスタート
 
-### Option A: Rust Server (Phase 2) — Recommended
+### Option A: Rust Server (Phase 4) — Recommended
 
 #### Prerequisites
 - Rust 1.88+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
-- Docker & Docker Compose（PostgreSQL + Redis 用）
+- Docker & Docker Compose（PostgreSQL + Redis + Kafka 用）
 - Stripe アカウント（テストモードの API キー）
+- Protocol Buffers compiler（gRPC ビルド用）: `brew install protobuf` / `apt install protobuf-compiler`
+- cmake（rdkafka ビルド用）: `brew install cmake` / `apt install cmake`
 
 ```bash
 git clone https://github.com/momo1235656/agenttrust-protocol.git
 cd agenttrust-protocol
 
-# Docker で PostgreSQL + Redis 起動
+# Docker で全スタック起動（PostgreSQL + Redis + Kafka + Zookeeper + Rustサーバー）
 cd docker
 cp ../server-rust/.env.example .env
 # .env を編集: STRIPE_SECRET_KEY を設定
+# Kafka を有効にする場合: KAFKA_BROKERS=kafka:9092 を追加
 
-# 全スタック起動（PostgreSQL + Redis + Rustサーバー）
-# ※ 初回ビルドは依存クレート(364パッケージ)のコンパイルのため10〜20分かかります
+# ※ 初回ビルドは依存クレート(400+パッケージ)のコンパイルのため15〜25分かかります
 docker-compose up
 
-# または Rust サーバーをローカルで起動
+# または Rust サーバーをローカルで起動（Kafka なしでも動作）
 cd ../server-rust
 cargo run
 ```
 
-ヘルスチェック: http://localhost:8000/health
+- REST API: http://localhost:8000/health
+- gRPC: localhost:50052
 
 ### Option B: Python Server (Phase 1) — Legacy
 
@@ -307,7 +340,7 @@ pytest tests/ -v
 # TypeScript テスト
 cd sdk-ts && npm install && npm test
 
-# Rust 単体テスト (Phase 2/3)
+# Rust 単体テスト (Phase 2–4)
 cd server-rust
 cargo test test_crypto test_hashing test_circuit_breaker
 
@@ -319,6 +352,10 @@ cd contracts && forge test -v
 
 # ML Service テスト (Phase 3)
 cd ml-service && pip install pytest && pytest tests/ -v
+
+# gRPC 動作確認 (Phase 4, grpcurl 必須: brew install grpcurl)
+grpcurl -plaintext -proto server-rust/proto/payment.proto \
+  localhost:50052 list agenttrust.payment.AgentPaymentService
 ```
 
 ---
@@ -397,6 +434,39 @@ async function main() {
 }
 
 main().catch(console.error);
+```
+
+### Agent-to-Agent Payment / エージェント間決済 (Phase 4)
+
+```python
+import asyncio
+from sdk.a2a import A2AClient
+
+async def main():
+    client = A2AClient(server_url="http://localhost:8000")
+
+    # Agent A → Agent B にデータ分析を依頼（エスクロー経由）
+    result = await client.initiate(
+        sender_did="did:key:z6MkAgent_A...",
+        receiver_did="did:key:z6MkAgent_B...",
+        amount=15000,
+        description="データ分析サービスの依頼",
+        service_type="data_analysis",
+        timeout_minutes=60,
+    )
+    print(f"Transfer ID: {result['transfer_id']}")
+    print(f"Saga ID:     {result['saga_id']}")
+    print(f"Status:      {result['status']}")       # "service_pending"
+    print(f"Escrow:      {result['escrow_status']}") # "funded"
+
+    # Agent B が作業完了を報告 → エスクロー自動解放 → 双方スコア更新
+    await client.complete(
+        saga_id=result['saga_id'],
+        reporter_did="did:key:z6MkAgent_B...",
+        result_summary="分析レポートを生成しました",
+    )
+
+asyncio.run(main())
 ```
 
 ---
@@ -494,7 +564,7 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | `GET` | `/payment/methods` | List payment methods | 決済手段一覧 |
 | `GET` | `/health` | Health check | ヘルスチェック |
 
-### Phase 3 New Endpoints — Trust / VC / Fraud
+### Phase 3 Endpoints — Trust / VC / Fraud
 
 | Method | Path | Description | 説明 |
 |--------|------|-------------|------|
@@ -506,6 +576,30 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | `POST` | `/vc/revoke` | Revoke Verifiable Credential | VC 失効 |
 | `POST` | `/fraud/check` | Check transaction for fraud | トランザクション不正チェック |
 | `GET` | `/fraud/:did/alerts` | Get fraud alerts | 不正アラート一覧取得 |
+
+### Phase 4 New Endpoints — A2A / Escrow / Saga / Flow
+
+| Method | Path | Description | 説明 |
+|--------|------|-------------|------|
+| `POST` | `/a2a/transfer` | Initiate A2A transfer | A2A 送金開始（10ステップ Saga） |
+| `GET` | `/a2a/transfer/:id` | Get A2A transfer status | 送金状態・Saga・エスクロー確認 |
+| `POST` | `/escrow/:id/release` | Release escrow | エスクロー解放（受信者へ送金） |
+| `POST` | `/escrow/:id/refund` | Refund escrow | エスクロー返金（送信者へ返却） |
+| `POST` | `/escrow/:id/dispute` | Dispute escrow | 紛争申立（エスクロー凍結） |
+| `GET` | `/saga/:id/status` | Get saga status | Saga 全ステップ状態取得 |
+| `POST` | `/saga/:id/complete` | Report service completion | 受信者がサービス完了を報告 |
+| `POST` | `/saga/:id/compensate` | Manual compensation | 手動補償実行（管理者用） |
+| `POST` | `/flow/configure` | Configure flow policy | フロー制御ポリシー設定 |
+| `GET` | `/flow/:did/health` | Get flow health | レート・アクティブSaga数・健全性確認 |
+
+### Phase 4 gRPC Endpoints — port 50052
+
+| RPC | Type | Description | 説明 |
+|-----|------|-------------|------|
+| `InitiateTransfer` | Unary | Start A2A transfer | A2A 送金開始 |
+| `CompleteService` | Unary | Report completion | サービス完了報告 |
+| `WatchTransfer` | Server Streaming | Real-time status updates | リアルタイムステータス更新 |
+| `DisputeEscrow` | Unary | Dispute escrow | 紛争申立 |
 
 ---
 
@@ -524,6 +618,9 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | `APPROVAL_REQUIRED` | 202 | High-value tx needs approval / 高額決済には承認が必要 |
 | `AGENT_FROZEN` | 403 | Agent account frozen / エージェントが凍結済み |
 | `RATE_LIMIT_EXCEEDED` | 429 | Too many requests / レート制限超過 |
+| `FLOW_VIOLATION` | 429 | Flow control limit exceeded / フロー制御違反（レート・ペア・深度） |
+| `ESCROW_ERROR` | 400 | Escrow operation failed / エスクロー操作エラー |
+| `SAGA_COMPENSATION_FAILED` | 500 | Saga compensation failed — manual intervention required / Saga補償失敗・要手動介入 |
 
 ---
 
@@ -538,6 +635,11 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 - Redis rate limiting prevents abuse at both agent and IP level
 - All secrets loaded from environment variables — nothing hardcoded
 - Ed25519 private keys are zeroed in memory after use (`ZeroizeOnDrop`)
+- **A2A escrow holds funds until service is confirmed** — neither party can unilaterally claim funds
+- **Saga compensation runs in reverse order** — every step that has side effects defines a rollback action
+- **Flow Controller is fail-closed** — if the controller is unavailable, transactions are denied (not allowed)
+- **Chain depth BFS** detects and blocks circular payment loops (A→B→C→A)
+- **Kafka events are best-effort** — Kafka failure never blocks a payment transaction
 
 **日本語:**
 - 秘密鍵はSDK外に出ません。サーバーには公開鍵のみ送信されます
@@ -548,6 +650,11 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 - RedisによるレートリミットでエージェントとIPの両レベルで乱用を防止します
 - すべてのシークレットは環境変数から読み込みます
 - Ed25519秘密鍵は使用後メモリからゼロ埋めされます（`ZeroizeOnDrop`）
+- **A2Aエスクローはサービス確認まで資金を仮預かり** — 一方的な資金引き出しは不可
+- **Sagaの補償は逆順実行** — 副作用のある全ステップが巻き戻しアクションを定義
+- **フロー制御はフェイルクローズ** — コントローラー障害時は取引を拒否（通過させない）
+- **BFS循環検知**でA→B→C→Aのような決済ループを検知・遮断します
+- **Kafkaイベントはベストエフォート** — Kafka障害が決済トランザクションをブロックすることはありません
 
 ---
 
@@ -558,9 +665,9 @@ result = await action.execute({"amount": 5000, "description": "商品購入"})
 | **MVP** | ✅ Done | FastAPI server, Python SDK, SQLite, Stripe, hash chain audit |
 | **Phase 1** | ✅ Done | TypeScript SDK, AutoGen, OpenClaw, MCP server, MkDocs, CI/CD |
 | **Phase 2** | ✅ Done | Rust/Axum server, PostgreSQL, Redis, OAuth 2.0, Human-in-the-Loop, Circuit Breaker |
-| **Phase 3** | ✅ **Done** | **Trust Score Engine**, **W3C VC Issuer** (Ed25519), **Fraud Detection** (rule engine + gRPC ML), **DID Registry on L2** (Solidity/Foundry/Polygon Amoy) |
-| **Phase 4** | 🔜 Planned | Production deployment (AWS/GCP), monitoring (Prometheus/Grafana) |
-| **Phase 5** | 🔜 Planned | `agenttrust-crypto` crate (PyO3 bindings for Python SDK) |
+| **Phase 3** | ✅ Done | Trust Score Engine, W3C VC Issuer (Ed25519), Fraud Detection (rule engine + gRPC ML), DID Registry on L2 (Solidity/Foundry/Polygon Amoy) |
+| **Phase 4** | ✅ **Done** | **A2A Payments** (10-step Saga), **Escrow Service** (Stripe Connect), **Saga Orchestrator** (backward compensation), **Flow Controller** (rate/pair/chain-depth/BFS), **Kafka** event stream, **gRPC Server** (tonic 0.11, streaming) |
+| **Phase 5** | 🔜 Planned | Production deployment (AWS/GCP), monitoring (Prometheus/Grafana), `agenttrust-crypto` crate (PyO3 bindings) |
 
 ---
 
