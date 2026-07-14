@@ -39,5 +39,8 @@ htmlcov/
 node_modules/
 sdk-ts/node_modules/
 
+# Rust
+target/
+
 # Claude Code
 .claude/

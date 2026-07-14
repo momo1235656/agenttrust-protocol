@@ -50,13 +50,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  ml-service:
-    build:
-      context: ../ml-service
-      dockerfile: Dockerfile
-    ports:
-      - "50051:50051"
-    restart: unless-stopped
+  # ml-service:
+  #   未完成のため一時的に無効化（Dockerfile / gRPC サーバー未実装）。
+  #   不正検知は現状 server-rust の fraud_service.rs で完結しているため未使用。
+  #   build:
+  #     context: ../ml-service
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "50051:50051"
+  #   restart: unless-stopped
 
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
