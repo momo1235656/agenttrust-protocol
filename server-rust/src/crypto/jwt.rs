@@ -45,24 +45,6 @@ fn private_key_to_pkcs8_der(raw_bytes: &[u8; 32]) -> Vec<u8> {
     der
 }
 
-/// Build SubjectPublicKeyInfo DER bytes for an Ed25519 public key from raw 32 bytes.
-fn public_key_to_spki_der(raw_bytes: &[u8; 32]) -> Vec<u8> {
-    // SubjectPublicKeyInfo for Ed25519
-    let oid = [0x06, 0x03, 0x2b, 0x65, 0x70]; // OID 1.3.101.112
-    let alg_seq = [vec![0x30, oid.len() as u8], oid.to_vec()].concat();
-    // BIT STRING: 0x00 (no unused bits) + raw key
-    let bit_string = {
-        let mut bs = vec![0x03, raw_bytes.len() as u8 + 1, 0x00]; // tag, len, unused_bits
-        bs.extend_from_slice(raw_bytes);
-        bs
-    };
-    let content_len = alg_seq.len() + bit_string.len();
-    let mut der = vec![0x30, content_len as u8];
-    der.extend_from_slice(&alg_seq);
-    der.extend_from_slice(&bit_string);
-    der
-}
-
 pub struct JwtKeys {
     encoding_key: EncodingKey,
     decoding_key: DecodingKey,
@@ -77,10 +59,13 @@ impl JwtKeys {
         let pub_arr: [u8; 32] = public_bytes.try_into().unwrap();
 
         let priv_der = private_key_to_pkcs8_der(&priv_arr);
-        let pub_der = public_key_to_spki_der(&pub_arr);
 
         let encoding_key = EncodingKey::from_ed_der(&priv_der);
-        let decoding_key = DecodingKey::from_ed_der(&pub_der);
+        // jsonwebtoken's EdDSA verification path (ring::signature::ED25519) takes the
+        // raw 32-byte public key directly — despite the `from_ed_der` name, it does not
+        // parse a SubjectPublicKeyInfo DER structure, unlike the encoding side which
+        // does parse real PKCS8 DER for the private key.
+        let decoding_key = DecodingKey::from_ed_der(&pub_arr);
 
         Ok(JwtKeys {
             encoding_key,
@@ -130,5 +115,37 @@ impl JwtKeys {
             "use": "sig",
             "alg": "EdDSA"
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_jwt_roundtrip() {
+        let priv_bytes = [1u8; 32];
+        let pub_bytes = {
+            use ed25519_dalek::SigningKey;
+            let sk = SigningKey::from_bytes(&priv_bytes);
+            *sk.verifying_key().as_bytes()
+        };
+
+        let keys = JwtKeys::from_bytes(&priv_bytes, &pub_bytes).expect("build keys");
+
+        let claims = JwtClaims {
+            sub: "did:key:ztest".to_string(),
+            scopes: vec!["payment:execute".to_string()],
+            max_amount: 50000,
+            currency: "jpy".to_string(),
+            allowed_categories: vec![],
+            iat: 0,
+            exp: 9999999999,
+        };
+
+        let token = keys.encode(&claims).expect("encode");
+        println!("TOKEN: {}", token);
+        let decoded = keys.decode(&token).expect("decode should succeed");
+        assert_eq!(decoded.sub, claims.sub);
     }
 }
