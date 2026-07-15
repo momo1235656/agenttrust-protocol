@@ -388,6 +388,23 @@ DID: did:key:z6MkhaXgBZDvot...
 決済結果: {'transaction_id': 'tx_a1b2c3...', 'status': 'succeeded', 'amount': 5000, ...}
 ```
 
+#### Full Scenario Demo / フルシナリオデモ
+
+`demo_full_en.py`（English）/ `demo_full_ja.py`（日本語）は、Rust サーバー（`docker-compose up`, `http://localhost:8000`）に対して4つのシナリオを実際に実行し、コアとなる保証がランタイムで機能していることを検証します（エンドポイントが応答するだけでなく）:
+
+1. DID生成 → 決済成功（Stripe テストモード決済、監査ハッシュ記録）
+2. 上限超過 → `403 SCOPE_EXCEEDED` で拒否（上限制御が実際に機能していることを確認）
+3. 監査ハッシュチェーン検証 → `chain_valid: true`
+4. A2Aエスクローフロー → 送金開始（資金拘束）→ 受取先の完了報告 → エスクロー解放、Saga `completed`
+
+```bash
+# English
+python demo_full_en.py
+
+# 日本語
+python demo_full_ja.py
+```
+
 ### Run Tests / テスト実行
 
 ```bash
