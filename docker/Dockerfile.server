@@ -1,8 +1,12 @@
 # Build stage
-FROM rust:latest AS builder
+# Pinned to the bookworm variant (not `rust:latest`) so the builder's glibc
+# matches the debian:bookworm-slim runtime image below — a floating `latest`
+# tag can silently move to a newer Debian release (e.g. trixie) and produce
+# a binary the runtime's older glibc can't load.
+FROM rust:bookworm AS builder
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake protobuf-compiler && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -12,6 +16,8 @@ COPY server-rust/Cargo.loc[k] ./
 RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs && cargo build --release && rm src/main.rs src/lib.rs
 
 # Build the actual application
+COPY server-rust/build.rs ./
+COPY server-rust/proto ./proto
 COPY server-rust/src ./src
 COPY server-rust/migrations ./migrations
 RUN find src -name '*.rs' | xargs touch && cargo build --release
